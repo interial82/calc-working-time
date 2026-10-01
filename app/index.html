@@ -182,6 +182,7 @@
       * 시간은 24시 기준으로 키보드로 직접 입력합니다 (예: 09:00, 18:30). "930"처럼 콜론 없이 입력해도 인식됩니다.<br>
       * 시작/종료 계산 시 휴게 시간이 자동 제안됩니다 (8시간 미만 30분, 8시간 이상 60분). 팝업에서 직접 수정할 수 있습니다.<br>
       * 평일 셀을 더블클릭하면 휴일로 지정/해제됩니다. 휴일은 빨간 배경으로 표시되고, 입력된 시간은 제거되며, 합계에서 제외됩니다.<br>
+      * 의무근무시간은 자동 계산: min(워킹데이×8, 역일÷7×40) 소수점 버림, 워킹데이는 휴일 지정 시 재계산. 입력칸을 비우면 자동값 사용, 직접 입력하면 그 값 우선.<br>
       * 모든 입력은 이 브라우저에 자동 저장됩니다.
     </div>
   </div>
@@ -321,6 +322,27 @@ function monthData(){
 }
 function dayKey(d){ return ym + "-" + String(d).padStart(2,"0"); }
 
+/* ================= 의무근무시간 자동 계산 =================
+   min( 워킹데이×8 , floor(역일÷7×40) )  — 소수점 버림
+   워킹데이 = 월~금 평일 중 휴일(화면 지정) 제외 */
+function calcRequired(ymKey, data){
+  const [y,m] = ymKey.split("-").map(Number);
+  const dim = new Date(y, m, 0).getDate();
+  let wd = 0;
+  for(let d=1; d<=dim; d++){
+    const dow = new Date(y, m-1, d).getDay();
+    if(dow === 0 || dow === 6) continue;
+    const day = data.days[dayKey(d)];
+    if(day && day.holiday) continue;   // 화면 지정 휴일 제외
+    wd++;
+  }
+  return Math.min(wd*8, Math.floor(dim/7*40));
+}
+function effectiveRequired(ymKey, data){
+  const v = (data.required === "" || data.required == null) ? NaN : parseFloat(data.required);
+  return isNaN(v) ? calcRequired(ymKey, data) : v;   // 직접 입력값 우선, 비우면 자동
+}
+
 /* ================= 시간 파싱/계산 ================= */
 // 24시 키보드 입력 파싱: "9:05" "09:05" "905" "0905" "9" → "HH:MM" (실패 시 null)
 function parseHMInput(s){
@@ -362,7 +384,10 @@ const DOW = ["일","월","화","수","목","금","토"];
 function render(){
   document.getElementById("monthPick").value = ym;
   const data = monthData();
-  document.getElementById("requiredInput").value = data.required ?? "";
+  const autoReq = calcRequired(ym, data);
+  const reqIn = document.getElementById("requiredInput");
+  reqIn.value = data.required ?? "";
+  reqIn.placeholder = "자동: " + autoReq;   // 비워두면 이 값이 의무근무시간
   const [y,m] = ym.split("-").map(Number);
   const first = new Date(y, m-1, 1);
   const dim = new Date(y, m, 0).getDate();
@@ -415,7 +440,7 @@ function updateSummary(){
   }
   total = Math.round(total*100)/100;
   document.getElementById("sumTotal").textContent = fmtH(total);
-  const req = parseFloat(data.required);
+  const req = effectiveRequired(ym, data);
   const el = document.getElementById("sumDiff");
   el.className = "value";
   el.style.color = "";
