@@ -181,6 +181,7 @@
       * 토/일은 화면에 표시되지 않습니다 (근무시간 합계에서도 제외).<br>
       * 시간은 24시 기준으로 키보드로 직접 입력합니다 (예: 09:00, 18:30). "930"처럼 콜론 없이 입력해도 인식됩니다.<br>
       * 시작/종료 계산 시 휴게 시간이 자동 제안됩니다 (4시간 미만 0분, 4시간 이상 9시간 미만 30분, 9시간 이상 60분). 팝업에서 직접 수정할 수 있습니다.<br>
+      * 시작/종료 시간을 입력한 날은 **시간 삭제(초기화)까지 시/분 직접 입력이 비활성화**됩니다 (중복 입력 방지).<br>
       * 평일 셀을 더블클릭하면 휴일로 지정/해제됩니다. 휴일은 빨간 배경으로 표시되고, 입력된 시간은 제거되며, 합계에서 제외됩니다.<br>
       * 의무근무시간은 자동 계산: min(워킹데이×8, 역일÷7×40) 소수점 버림, 워킹데이는 휴일 지정 시 재계산. 입력칸을 비우면 자동값 사용, 직접 입력하면 그 값 우선.<br>
       * 모든 입력은 이 브라우저에 자동 저장됩니다.
@@ -412,8 +413,8 @@ function render(){
     const mm = h != null ? Math.round((h - hh)*60) : "";
     let html = `<div class="daynum"><span class="num">${d}</span><span class="dow">${DOW[dow]}</span></div>`;
     html += `<div class="hmRow">
-        <input type="number" class="hoursInput" min="0" max="24" step="1" placeholder="00" value="${hh}" data-key="${key}" ${day.holiday ? "disabled" : ""}>
-        <input type="number" class="minInput" min="0" max="59" step="1" placeholder="00" value="${mm}" data-key="${key}" ${day.holiday ? "disabled" : ""}>
+        <input type="number" class="hoursInput" min="0" max="24" step="1" placeholder="00" value="${hh}" data-key="${key}" ${day.holiday || (day.start && day.end) ? "disabled" : ""}>
+        <input type="number" class="minInput" min="0" max="59" step="1" placeholder="00" value="${mm}" data-key="${key}" ${day.holiday || (day.start && day.end) ? "disabled" : ""}>
       </div>`;
     const has = day.start && day.end;
     if(day.holiday){
