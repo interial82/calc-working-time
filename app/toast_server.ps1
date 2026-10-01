@@ -1,4 +1,17 @@
 ﻿# 근무시간 계산기 — Windows 토스트 실행자 (PowerShell 내장, Python 불필요)
+# Copyright 2026 interial82
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # - 로컬 HTTP 서버 (127.0.0.1:8737): 브라우저가 /toast 요청을 보내면 Windows 우하단 토스트 표시
 # - 창 최소화 상태에서도 토스트는 시스템 레벨이라 정상 표시
 # - 브라우저 탭이 닫혀 /ping이 4분간 없으면 자동 종료 (상주 안 함)

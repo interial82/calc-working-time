@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!-- Copyright 2026 interial82
+<!-- 
+<!-- Licensed under the Apache License, Version 2.0 (the "License");
+<!-- you may not use this file except in compliance with the License.
+<!-- You may obtain a copy of the License at
+<!-- 
+<!--     http://www.apache.org/licenses/LICENSE-2.0
+<!-- 
+<!-- Unless required by applicable law or agreed to in writing, software
+<!-- distributed under the License is distributed on an "AS IS" BASIS,
+<!-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+<!-- See the License for the specific language governing permissions and
+<!-- limitations under the License. -->
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
@@ -167,8 +180,10 @@
     <div class="hint">
       * 토/일은 화면에 표시되지 않습니다 (근무시간 합계에서도 제외).<br>
       * 시간은 24시 기준으로 키보드로 직접 입력합니다 (예: 09:00, 18:30). "930"처럼 콜론 없이 입력해도 인식됩니다.<br>
-      * 시작/종료 계산 시 휴게 시간이 자동 제안됩니다 (8시간 미만 30분, 8시간 이상 60분). 팝업에서 직접 수정할 수 있습니다.<br>
+      * 시작/종료 계산 시 휴게 시간이 자동 제안됩니다 (4시간 미만 0분, 4시간 이상 9시간 미만 30분, 9시간 이상 60분). 팝업에서 직접 수정할 수 있습니다.<br>
+      * 시작/종료 시간을 입력한 날은 **시간 삭제(초기화)까지 시/분 직접 입력이 비활성화**됩니다 (중복 입력 방지).<br>
       * 평일 셀을 더블클릭하면 휴일로 지정/해제됩니다. 휴일은 빨간 배경으로 표시되고, 입력된 시간은 제거되며, 합계에서 제외됩니다.<br>
+      * 의무근무시간은 자동 계산: min(워킹데이×8, 역일÷7×40) 소수점 버림, 워킹데이는 휴일 지정 시 재계산. 입력칸을 비우면 자동값 사용, 직접 입력하면 그 값 우선.<br>
       * 모든 입력은 이 브라우저에 자동 저장됩니다.
     </div>
   </div>
@@ -308,6 +323,27 @@ function monthData(){
 }
 function dayKey(d){ return ym + "-" + String(d).padStart(2,"0"); }
 
+/* ================= 의무근무시간 자동 계산 =================
+   min( 워킹데이×8 , floor(역일÷7×40) )  — 소수점 버림
+   워킹데이 = 월~금 평일 중 휴일(화면 지정) 제외 */
+function calcRequired(ymKey, data){
+  const [y,m] = ymKey.split("-").map(Number);
+  const dim = new Date(y, m, 0).getDate();
+  let wd = 0;
+  for(let d=1; d<=dim; d++){
+    const dow = new Date(y, m-1, d).getDay();
+    if(dow === 0 || dow === 6) continue;
+    const day = data.days[dayKey(d)];
+    if(day && day.holiday) continue;   // 화면 지정 휴일 제외
+    wd++;
+  }
+  return Math.min(wd*8, Math.floor(dim/7*40));
+}
+function effectiveRequired(ymKey, data){
+  const v = (data.required === "" || data.required == null) ? NaN : parseFloat(data.required);
+  return isNaN(v) ? calcRequired(ymKey, data) : v;   // 저장값(계산값과 다를 때만 저장됨) 우선, 없으면 자동
+}
+
 /* ================= 시간 파싱/계산 ================= */
 // 24시 키보드 입력 파싱: "9:05" "09:05" "905" "0905" "9" → "HH:MM" (실패 시 null)
 function parseHMInput(s){
@@ -334,7 +370,7 @@ function rawMins(startStr, endStr){
   if(m <= 0) m += 1440;   // 익일(야간) 근무
   return m;
 }
-function suggestBreakMin(rawMin){ return rawMin < 480 ? 30 : 60; }  // 8시간 미만 30분 / 이상 60분
+function suggestBreakMin(rawMin){ return rawMin < 240 ? 0 : (rawMin < 540 ? 30 : 60); }  // 4시간 미만 0분 / 4~9시간 미만 30분 / 9시간 이상 60분
 function fmtH(h){
   if(h == null || isNaN(h)) return "—";
   h = Math.round(h*100)/100;
@@ -349,7 +385,10 @@ const DOW = ["일","월","화","수","목","금","토"];
 function render(){
   document.getElementById("monthPick").value = ym;
   const data = monthData();
-  document.getElementById("requiredInput").value = data.required ?? "";
+  const autoReq = calcRequired(ym, data);
+  const reqIn = document.getElementById("requiredInput");
+  reqIn.value = (data.required === "" || data.required == null) ? autoReq : data.required;
+  reqIn.placeholder = "자동: " + autoReq;   // 계산값과 동일 입력 시 자동 모드 유지
   const [y,m] = ym.split("-").map(Number);
   const first = new Date(y, m-1, 1);
   const dim = new Date(y, m, 0).getDate();
@@ -374,8 +413,8 @@ function render(){
     const mm = h != null ? Math.round((h - hh)*60) : "";
     let html = `<div class="daynum"><span class="num">${d}</span><span class="dow">${DOW[dow]}</span></div>`;
     html += `<div class="hmRow">
-        <input type="number" class="hoursInput" min="0" max="24" step="1" placeholder="00" value="${hh}" data-key="${key}" ${day.holiday ? "disabled" : ""}>
-        <input type="number" class="minInput" min="0" max="59" step="1" placeholder="00" value="${mm}" data-key="${key}" ${day.holiday ? "disabled" : ""}>
+        <input type="number" class="hoursInput" min="0" max="24" step="1" placeholder="00" value="${hh}" data-key="${key}" ${day.holiday || (day.start && day.end) ? "disabled" : ""}>
+        <input type="number" class="minInput" min="0" max="59" step="1" placeholder="00" value="${mm}" data-key="${key}" ${day.holiday || (day.start && day.end) ? "disabled" : ""}>
       </div>`;
     const has = day.start && day.end;
     if(day.holiday){
@@ -402,7 +441,7 @@ function updateSummary(){
   }
   total = Math.round(total*100)/100;
   document.getElementById("sumTotal").textContent = fmtH(total);
-  const req = parseFloat(data.required);
+  const req = effectiveRequired(ym, data);
   const el = document.getElementById("sumDiff");
   el.className = "value";
   el.style.color = "";
@@ -476,12 +515,12 @@ function refreshBreakSuggestion(){
   const raw = rawMins(mStart.value, mEnd.value);
   const note = document.getElementById("brkNote");
   if(raw == null){
-    note.textContent = "시간을 입력하면 휴게 시간이 자동 제안됩니다 (8시간 미만 30분 / 8시간 이상 60분).";
+    note.textContent = "시간을 입력하면 휴게 시간이 자동 제안됩니다 (4시간 미만 0분 / 4시간 이상 9시간 미만 30분 / 9시간 이상 60분).";
     return;
   }
   const sug = suggestBreakMin(raw);
   if(!breakTouched) mBreak.value = sug;
-  note.textContent = `자동 제안: ${sug}분 (8시간 미만 30분 / 8시간 이상 60분) — 직접 수정 가능`;
+  note.textContent = `자동 제안: ${sug}분 (4시간 미만 0분 / 4~9시간 미만 30분 / 9시간 이상 60분) — 직접 수정 가능`;
 }
 function updatePreview(){
   const pv = document.getElementById("preview");
@@ -575,7 +614,11 @@ document.getElementById("monthPick").addEventListener("change", e=>{
   if(e.target.value){ ym = e.target.value; render(); }
 });
 document.getElementById("requiredInput").addEventListener("input", e=>{
-  monthData().required = e.target.value;
+  const data = monthData();
+  const v = e.target.value.trim();
+  const auto = calcRequired(ym, data);
+  // 계산값과 동일하면 저장하지 않고 자동 모드 유지 (매번 새로 계산된 값 표시)
+  data.required = (v !== "" && parseFloat(v) !== auto) ? v : "";
   saveStore();
   updateSummary();
 });
@@ -792,12 +835,12 @@ function estRefreshBreak(){
   const raw = rawMins(eStart.value, eEnd.value);
   const note = document.getElementById("estBrkNote");
   if(raw == null){
-    note.textContent = "시간을 입력하면 휴게 시간이 자동 제안됩니다 (8시간 미만 30분 / 8시간 이상 60분).";
+    note.textContent = "시간을 입력하면 휴게 시간이 자동 제안됩니다 (4시간 미만 0분 / 4시간 이상 9시간 미만 30분 / 9시간 이상 60분).";
     return;
   }
   const sug = suggestBreakMin(raw);
   if(!estBreakTouched) eBreak.value = sug;
-  note.textContent = `자동 제안: ${sug}분 (8시간 미만 30분 / 8시간 이상 60분) — 직접 수정 가능`;
+  note.textContent = `자동 제안: ${sug}분 (4시간 미만 0분 / 4~9시간 미만 30분 / 9시간 이상 60분) — 직접 수정 가능`;
 }
 function estUpdatePreview(){
   const pv = document.getElementById("estPreview");
