@@ -1,4 +1,17 @@
 ﻿# 근무시간 계산기 바탕화면 바로가기 생성
+# Copyright 2026 interial82
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # 자기 위치 기준 동적 경로: 이 스크립트는 app\ 폴더에 있고,
 #   BAT  = 상위 폴더의 '근무시간 계산기.bat'
 #   ICON = 이 폴더의 app.ico

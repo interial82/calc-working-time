@@ -1,5 +1,7 @@
 # 근무시간 계산기
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 단일 HTML 파일 (`app\index.html`) — 설치 불필요.
 **권장 실행법**: 최상위 `근무시간 계산기.bat` 더블클릭 → 서버 기동 + 페이지가 `http://127.0.0.1:8737/`로 자동 열림.
 (`index.html`을 직접 더블클릭(file://)해도 동작은 하지만, 토스트/자동백업/스냅샷 등 서버 기능은 사용 불가)
@@ -123,3 +125,8 @@ UTF-8 텍스트(JSON):
 - 휴일 지정은 평일 셀에서만 동작합니다 (주말은 원래 제외).
 - 폴더 점검: `powershell -NoProfile -ExecutionPolicy Bypass -File app\folder_report.ps1`
   → `app\folder_report.txt`에 최상위/app 파일 목록, 구 파일 잔여 경고, BAT/필수 파일 확인, 스냅샷 목록 기록
+
+## 라이선스
+
+- 이 저장소의 모든 소스는 **Apache License 2.0** (전문: [`LICENSE`](LICENSE), 저작권 표기: [`NOTICE`](NOTICE)).
+- 재사용·수정·재배포·상업적 이용 가능. 단, 사본에 라이선스 사본 포함 및 변경 사항 표기, 제3자 소유 파일의 고지문 유지 조건.
