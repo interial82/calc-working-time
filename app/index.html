@@ -340,7 +340,7 @@ function calcRequired(ymKey, data){
 }
 function effectiveRequired(ymKey, data){
   const v = (data.required === "" || data.required == null) ? NaN : parseFloat(data.required);
-  return isNaN(v) ? calcRequired(ymKey, data) : v;   // 직접 입력값 우선, 비우면 자동
+  return isNaN(v) ? calcRequired(ymKey, data) : v;   // 저장값(계산값과 다를 때만 저장됨) 우선, 없으면 자동
 }
 
 /* ================= 시간 파싱/계산 ================= */
@@ -386,8 +386,8 @@ function render(){
   const data = monthData();
   const autoReq = calcRequired(ym, data);
   const reqIn = document.getElementById("requiredInput");
-  reqIn.value = data.required ?? "";
-  reqIn.placeholder = "자동: " + autoReq;   // 비워두면 이 값이 의무근무시간
+  reqIn.value = (data.required === "" || data.required == null) ? autoReq : data.required;
+  reqIn.placeholder = "자동: " + autoReq;   // 계산값과 동일 입력 시 자동 모드 유지
   const [y,m] = ym.split("-").map(Number);
   const first = new Date(y, m-1, 1);
   const dim = new Date(y, m, 0).getDate();
@@ -613,7 +613,11 @@ document.getElementById("monthPick").addEventListener("change", e=>{
   if(e.target.value){ ym = e.target.value; render(); }
 });
 document.getElementById("requiredInput").addEventListener("input", e=>{
-  monthData().required = e.target.value;
+  const data = monthData();
+  const v = e.target.value.trim();
+  const auto = calcRequired(ym, data);
+  // 계산값과 동일하면 저장하지 않고 자동 모드 유지 (매번 새로 계산된 값 표시)
+  data.required = (v !== "" && parseFloat(v) !== auto) ? v : "";
   saveStore();
   updateSummary();
 });
