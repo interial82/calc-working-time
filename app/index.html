@@ -701,7 +701,7 @@ document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeModal(); }
 /* ================= 클릭 위임 ================= */
 grid.addEventListener("click", e=>{
   if(lpJustFired()) return;   // 롱프레스(연차) 직후 클릭 연쇄 무시
-  if(suppressClick){ suppressClick = false; return; }   // 드래그 선택 종료 클릭 무시
+  if(justDragged()) return;   // 드래그 선택 종료 클릭 무시
   const cell = e.target.closest(".cell:not(.blank)");
   if(!cell) return;
   const key = cell.dataset.key;
@@ -711,6 +711,15 @@ grid.addEventListener("click", e=>{
   const day = monthData().days[tr.dataset.key] || {};
   if(day.holiday) return;   // 휴일은 시간 입력 비활성화
   openModal(tr.dataset.key);
+});
+
+/* 멀티 선택 중 일별 셀/모달이 아닌 곳을 클릭하면 선택 해제 */
+document.addEventListener("click", e=>{
+  if(justDragged()) return;   // 드래그 종료 클릭은 해제 대상 아님
+  if(selKeys.size === 0) return;
+  if(e.target.closest(".cell:not(.blank)")) return;                        // 일별 셀 클릭은 선택 유지
+  if(e.target.closest("#overlay, #estOverlay, #helpOverlay")) return;      // 모달 내 조작은 선택 유지 (일괄 반영용)
+  clearSel();
 });
 
 /* ================= 더블클릭 → 휴일 지정 (셀 전체 범위) / 롱프레스(1초) → 연차 ================= */
@@ -727,7 +736,8 @@ grid.addEventListener("contextmenu", e=>{ if(e.target.closest(".cell:not(.blank)
 /* 롱프레스(1초) → 연차 / 드래그 → 멀티 선택 */
 let lpTimer = null, lpFiredAt = 0;
 function lpJustFired(){ return Date.now() - lpFiredAt < 1500; }   // 롱프레스 직후 클릭/더블클릭 연쇄 무시
-let dragStartKey = null, dragging = false, dragMoved = false, lastDragKey = null, suppressClick = false;
+let dragStartKey = null, dragging = false, dragMoved = false, lastDragKey = null, lastDragEnd = 0;
+function justDragged(){ return Date.now() - lastDragEnd < 150; }   // 드래그 종료 직후 파생 클릭 무시 (grid/document 양쪽 공통)
 grid.addEventListener("pointerdown", e=>{
   if(e.button !== 0) return;
   if(e.target.closest("input")) return;   // 입력 필드 위 누름은 롱프레스/드래그 대상 아님
@@ -754,7 +764,7 @@ document.addEventListener("pointermove", e=>{
 });
 function lpCancel(){
   clearTimeout(lpTimer); lpTimer = null;
-  if(dragging){ dragging = false; if(dragMoved) suppressClick = true; }   // 드래그 종료 클릭 무시
+  if(dragging){ dragging = false; if(dragMoved) lastDragEnd = Date.now(); }   // 드래그 종료 클릭 무시
 }
 document.addEventListener("pointerup", lpCancel);
 document.addEventListener("pointercancel", lpCancel);
