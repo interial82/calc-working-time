@@ -64,15 +64,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   ok('연차 → 더블클릭 → 휴일 전환 (중복 없음, 시간 제거)', v2h.holiday && !v2h.vacation && v2h.hoursGone && v2h.redClass, JSON.stringify(v2h));
 
-  // 3) 드래그 멀티 선택
-  const drag = await page.evaluate(async () => {
-    const cells = [...document.querySelectorAll('#calGrid .cell:not(.blank)')];
-    const a = cells[0], b = cells[3];
-    a.dispatchEvent(new PointerEvent('pointerdown', { button: 0, buttons: 1, bubbles: true }));
-    b.dispatchEvent(new PointerEvent('pointermove', { button: 0, buttons: 1, bubbles: true }));
-    await new Promise(r => setTimeout(r, 150));
-    b.dispatchEvent(new PointerEvent('pointerup', { button: 0, bubbles: true }));
-    await new Promise(r => setTimeout(r, 150));
+  // 3) 드래그 멀티 선택 (실제 마우스: 합성 pointermove는 clientX=0이라 elementFromPoint 실패)
+  await page.setViewport({ width: 1100, height: 900 });
+  await sleep(300);
+  const centers = await page.evaluate(() =>
+    [...document.querySelectorAll('#calGrid .cell:not(.blank)')].slice(0, 4).map(c => {
+      const r = c.getBoundingClientRect();
+      return { x: r.x + r.width/2, y: r.y + r.height/2 };
+    }));
+  await page.mouse.move(centers[0].x, centers[0].y);
+  await page.mouse.down();
+  for(let i=1; i<4; i++){ await page.mouse.move(centers[i].x, centers[i].y, { steps: 4 }); await sleep(40); }
+  await page.mouse.up();
+  await sleep(250);
+  const drag = await page.evaluate(() => {
     const sel = [...document.querySelectorAll('#calGrid .cell.sel')].map(c=>c.dataset.key);
     return { selCount: sel.length, sel, info: document.getElementById('selInfo').textContent };
   });
@@ -156,19 +161,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   ok('미래 일자 연한 회색 (future)', future.tk && future.futCount > 0 && future.allAfter, JSON.stringify(future));
 
-  // 9) 하단 설명 접기/펼치기
+  // 9) 하단 설명 접기/펼치기 (기본 접힘)
   const hint = await page.evaluate(async () => {
     const body = document.getElementById('hintBody');
     const btn = document.getElementById('hintToggle');
-    const openBefore = !body.classList.contains('collapsed');
+    const collapsedBefore = body.classList.contains('collapsed');   // 기본 접힘
     btn.click();
-    const collapsedAfter = body.classList.contains('collapsed');
+    const openAfter = !body.classList.contains('collapsed');
     const labelAfter = btn.textContent;
     btn.click();
-    const openAgain = !body.classList.contains('collapsed');
-    return { openBefore, collapsedAfter, labelAfter, openAgain };
+    const collapsedAgain = body.classList.contains('collapsed');
+    return { collapsedBefore, openAfter, labelAfter, collapsedAgain };
   });
-  ok('하단 설명 접기/펼치기 토글', hint.openBefore && hint.collapsedAfter && hint.labelAfter.includes('▶') && hint.openAgain, JSON.stringify(hint));
+  ok('하단 설명 기본 접힘 + 토글', hint.collapsedBefore && hint.openAfter && hint.labelAfter.includes('▼') && hint.collapsedAgain, JSON.stringify(hint));
 
   console.log(results.join('\n'));
   const fails = results.filter(r => r.startsWith('FAIL')).length;
