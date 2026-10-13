@@ -425,10 +425,18 @@ function renderSelInfo(){
     btn.style.display = "none";
   }
 }
-function clearSel(){ selKeys.clear(); renderSelInfo(); render(); }
+/* 선택 변경은 render()를 부르지 않고 .sel 클래스만 토글한다.
+   render()는 셀 DOM을 재생성하므로 드래그 중 포인터 이벤트가 끊기고 Shift 연속 선택이 깨진다. */
+function applySelClasses(){
+  grid.querySelectorAll(".cell:not(.blank)").forEach(c=>{
+    c.classList.toggle("sel", selKeys.has(c.dataset.key));
+  });
+  renderSelInfo();
+}
+function clearSel(){ selKeys.clear(); applySelClasses(); }
 function toggleSel(key){
   if(selKeys.has(key)) selKeys.delete(key); else selKeys.add(key);
-  renderSelInfo(); render();
+  applySelClasses();
 }
 /* grid DOM 순서(월→일, 5열)로 dragStart~target 사이 셀을 선택 */
 function selectRangeTo(targetKey){
@@ -438,7 +446,7 @@ function selectRangeTo(targetKey){
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   selKeys.clear();
   for(let i=lo; i<=hi; i++) selKeys.add(order[i]);
-  renderSelInfo(); render();
+  applySelClasses();
 }
 function render(){
   document.getElementById("monthPick").value = ym;
@@ -730,9 +738,12 @@ grid.addEventListener("pointerdown", e=>{
   clearTimeout(lpTimer);
   lpTimer = setTimeout(()=>{ lpFiredAt = Date.now(); dragging = false; toggleVacation(key); }, 1000);
 });
-grid.addEventListener("pointermove", e=>{
+/* 포인터 캡처는 click 대상을 grid로 바꿔 timerange/Shift 클릭이 깨지므로
+   캡처 대신 document에서 move/up를 받는다 (grid 밖으로 나가도 드래그 유지) */
+document.addEventListener("pointermove", e=>{
   if(!dragging || !(e.buttons & 1)) return;
-  const cell = e.target.closest(".cell:not(.blank)");
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const cell = el ? el.closest(".cell:not(.blank)") : null;
   if(!cell) return;
   const key = cell.dataset.key;
   if(key === lastDragKey) return;
@@ -745,8 +756,8 @@ function lpCancel(){
   clearTimeout(lpTimer); lpTimer = null;
   if(dragging){ dragging = false; if(dragMoved) suppressClick = true; }   // 드래그 종료 클릭 무시
 }
-grid.addEventListener("pointerup", lpCancel);
-grid.addEventListener("pointercancel", lpCancel);
+document.addEventListener("pointerup", lpCancel);
+document.addEventListener("pointercancel", lpCancel);
 grid.addEventListener("pointerleave", ()=>{ clearTimeout(lpTimer); lpTimer = null; });
 
 function toggleVacation(key){
@@ -1328,7 +1339,7 @@ function setHintOpen(open){
 document.getElementById("hintToggle").addEventListener("click", ()=>{
   setHintOpen(document.getElementById("hintBody").classList.contains("collapsed"));
 });
-setHintOpen(store.hintOpen !== false);   // 기본 펼침 (접은 적 있으면 접힘 유지)
+setHintOpen(store.hintOpen === true);   // 기본 접힘 (펼친 적 있는 경우에만 펼침 유지)
 document.getElementById("selClear").addEventListener("click", clearSel);
 
 /* ===== 서버 저장소(backup_auto.txt)와 동기화 =====
