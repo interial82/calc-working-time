@@ -52,6 +52,11 @@
   .cell.blank{background:transparent;border:none}
   .cell.today{background:#dbeafe;border-color:#3b82f6}
   .cell.today .daynum .num{color:#1d4ed8}
+  /* 미래 일자: 연한 회색 (휴일/연차/오늘 색이 우선 — 아래 규칙들이 이 규칙을 덮음) */
+  .cell.future{background:#e5e7eb;border-color:#cbd5e1}
+  .cell.future .daynum .num{color:#9ca3af}
+  /* 멀티 선택: 파란 테두리 + 얇은 하이라이트 (배경색은 휴일/연차/오늘/미래 유지) */
+  .cell.sel{outline:2px solid var(--accent);outline-offset:-2px;box-shadow:0 0 0 2px var(--accent-soft)}
   .cell.holiday{background:#fecaca;border-color:var(--red)}
   .cell.holiday .daynum .num{color:var(--red)}
   .daynum{font-weight:700;font-size:13px;margin-bottom:4px}
@@ -72,6 +77,11 @@
   /* 휴일+연차 동시 지정 시 배지 나란히 (연차 오른쪽, 휴일 왼쪽) */
   .cell.holiday.vacation .holidayBadge{right:34px}
   .hint{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7}
+  .hint.collapsed{display:none}
+  .hintHead{display:flex;align-items:center;gap:8px;margin-top:10px}
+  #hintToggle{padding:3px 10px;font-size:12px}
+  #selInfo{font-size:12px;color:var(--accent);font-weight:700}
+  #selClear{padding:3px 10px;font-size:12px}
   .footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
   #savedStamp,#monthCount,#syncStamp{font-size:12px;color:var(--muted)}
   #peerWarn{font-size:12px;color:#b91c1c;font-weight:600}
@@ -187,14 +197,22 @@
 
   <div class="card">
     <div class="grid" id="calGrid" style="margin-top:6px"></div>
-    <div class="hint">
+    <div class="bar" style="margin:8px 0 0">
+      <span id="selInfo"></span>
+      <button class="btn" id="selClear" style="display:none">선택 해제</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="hintToggle">▼ 설명</button>
+    </div>
+    <div class="hint" id="hintBody">
       * 토/일은 화면에 표시되지 않습니다 (근무시간 합계에서도 제외).<br>
       * 시간은 24시 기준으로 키보드로 직접 입력합니다 (예: 09:00, 18:30). "930"처럼 콜론 없이 입력해도 인식됩니다.<br>
       * 시작/종료 계산 시 휴게 시간이 자동 제안됩니다 (4시간 미만 0분, 4시간 이상 9시간 미만 30분, 9시간 이상 60분). 팝업에서 직접 수정할 수 있습니다.<br>
       * 시작/종료 시간을 입력한 날은 **시간 삭제(초기화)까지 시/분 직접 입력이 비활성화**됩니다 (중복 입력 방지).<br>
       * 평일 셀 **어디든 더블클릭**하면 휴일로 지정/해제됩니다. 휴일은 빨간 배경으로 표시되고, 입력된 시간은 제거되며, 합계에서 제외됩니다.<br>
       * 셀을 **1초 이상 꾹 누르면(롱프레스)** 연차로 지정/해제됩니다. 연차는 연한 초록 배경 + `연차` 배지로 표시되고, **입력된 시간은 유지**되며 합계에도 그대로 포함됩니다.<br>
-      * 오늘 날짜의 셀은 연한 파란색으로 표시됩니다 (휴일/연차 지정 시 각각의 색이 우선).<br>
+      * **휴일과 연차는 중복되지 않습니다** — 휴일 셀을 롱프레스하면 연차로, 연차 셀을 더블클릭하면 휴일로 전환됩니다.<br>
+      * **멀티 선택**: 셀 위를 **마우스로 드래그**하거나 **Shift+클릭**으로 여러 셀을 고를 수 있습니다. 선택 상태에서 시/분 수기 입력이나 `⏱ 시간 입력` 팝업 적용을 하면 **선택된 모든 셀에 일괄 반영**됩니다.<br>
+      * 오늘 날짜의 셀은 연한 파란색, **미래 일자**는 연한 회색으로 표시됩니다 (휴일/연차 지정 시 각각의 색이 우선).<br>
       * 의무근무시간은 자동 계산: min(워킹데이×8, 역일÷7×40) 소수점 버림, 워킹데이는 휴일 지정 시 재계산. 입력칸을 비우면 자동값 사용, 직접 입력하면 그 값 우선.<br>
       * 모든 입력은 이 브라우저에 자동 저장됩니다.
     </div>
@@ -394,8 +412,39 @@ function fmtH(h){
 
 /* ================= 달력 렌더 (토/일 미표시, 5열) ================= */
 const DOW = ["일","월","화","수","목","금","토"];
+/* 멀티 선택 상태 (현재 화면의 셀 키 모음) */
+const selKeys = new Set();
+function renderSelInfo(){
+  const el = document.getElementById("selInfo");
+  const btn = document.getElementById("selClear");
+  if(selKeys.size > 0){
+    el.textContent = "선택 " + selKeys.size + "개 — 입력/시간 팝업 적용이 선택 셀 전체에 일괄 반영됩니다";
+    btn.style.display = "";
+  }else{
+    el.textContent = "";
+    btn.style.display = "none";
+  }
+}
+function clearSel(){ selKeys.clear(); renderSelInfo(); render(); }
+function toggleSel(key){
+  if(selKeys.has(key)) selKeys.delete(key); else selKeys.add(key);
+  renderSelInfo(); render();
+}
+/* grid DOM 순서(월→일, 5열)로 dragStart~target 사이 셀을 선택 */
+function selectRangeTo(targetKey){
+  const order = [...grid.querySelectorAll(".cell:not(.blank)")].map(c=>c.dataset.key);
+  const a = order.indexOf(dragStartKey), b = order.indexOf(targetKey);
+  if(a < 0 || b < 0) return;
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  selKeys.clear();
+  for(let i=lo; i<=hi; i++) selKeys.add(order[i]);
+  renderSelInfo(); render();
+}
 function render(){
   document.getElementById("monthPick").value = ym;
+  // 월이 바뀌면 이전 달 선택 키는 화면에 없으므로 정리
+  [...selKeys].forEach(k=>{ if(!k.startsWith(ym)) selKeys.delete(k); });
+  renderSelInfo();
   const data = monthData();
   const autoReq = calcRequired(ym, data);
   const reqIn = document.getElementById("requiredInput");
@@ -420,7 +469,9 @@ function render(){
     const day = data.days[key] || {};
     const cell = document.createElement("div");
     cell.className = "cell" + (day.holiday ? " holiday" : "") + (day.vacation ? " vacation" : "") +
-                     (key === todayKey ? " today" : "");   // 오늘 셀 연한 파란색 (휴일/연차 색은 우선)
+                     (key === todayKey ? " today" : "") +
+                     (key > todayKey ? " future" : "") +          // 미래 일자 연한 회색 (휴일/연차/오늘이 우선)
+                     (selKeys.has(key) ? " sel" : "");           // 멀티 선택 표시
     cell.dataset.key = key;
     const h = (day.hours != null && !isNaN(parseFloat(day.hours))) ? parseFloat(day.hours) : null;
     const hh = h != null ? Math.floor(h + 1e-9) : "";
@@ -497,11 +548,36 @@ grid.addEventListener("input", e=>{
   const day = data.days[key] || (data.days[key] = {});
   const hv = hEl.value === "" ? null : Math.max(0, Math.min(24, parseFloat(hEl.value) || 0));
   let mv = mEl.value === "" ? null : Math.max(0, Math.min(59, parseFloat(mEl.value) || 0));
-  if(hv == null && mv == null){ day.hours = null; }
+  let hours;
+  if(hv == null && mv == null){ hours = null; }
   else{
     let total = (hv || 0) + (mv || 0)/60;
     if(total > 24) total = 24;
-    day.hours = Math.round(total*100)/100;
+    hours = Math.round(total*100)/100;
+  }
+  day.hours = hours;
+  // 멀티 선택 일괄 반영: 선택된 다른 셀들에도 같은 시/분 적용 (휴일 셀은 제외)
+  if(selKeys.size > 1 && selKeys.has(key)){
+    let n = 0;
+    selKeys.forEach(k=>{
+      if(k === key) return;
+      const d = data.days[k] || (data.days[k] = {});
+      if(d.holiday) return;
+      d.hours = hours;
+      delete d.start; delete d.end; delete d.break;   // 시/분 수기 입력으로 통일
+      const he = grid.querySelector(`.hoursInput[data-key="${k}"]`);
+      const me = grid.querySelector(`.minInput[data-key="${k}"]`);
+      if(he && me){
+        const ch = hours != null ? Math.floor(hours + 1e-9) : "";
+        he.disabled = false; me.disabled = false;   // start/end 삭제 → 시/분 입력 다시 활성
+        he.value = ch;
+        me.value = hours != null ? Math.round((hours - ch)*60) : "";
+        const tr = grid.querySelector(`.timerange[data-key="${k}"]`);
+        if(tr){ tr.textContent = "⏱ 시간 입력"; tr.classList.add("empty"); }
+      }
+      n++;
+    });
+    if(n) toast("선택 " + (n+1) + "개 셀에 " + fmtH(hours) + " 일괄 반영");
   }
   saveStore();
   updateSummary();
@@ -575,16 +651,40 @@ document.getElementById("mApply").addEventListener("click", ()=>{
   day.break = brk;
   day.hours = hours;
   mStart.value = s; mEnd.value = e;   // 정규화 표시
+  // 멀티 선택 일괄 반영: 선택된 다른 셀들에도 같은 시작/종료/제외 적용 (휴일 셀 제외)
+  let batch = 0;
+  if(selKeys.size > 1 && selKeys.has(modalKey)){
+    selKeys.forEach(k=>{
+      if(k === modalKey) return;
+      const d = data.days[k] || (data.days[k] = {});
+      if(d.holiday) return;
+      d.start = s; d.end = e; d.break = brk; d.hours = hours;
+      batch++;
+    });
+  }
   saveStore();
   render();
   closeModal();
-  toast(modalKeyLabel() + ": " + fmtH(hours) + " 반영");
+  toast(batch ? "선택 " + (batch+1) + "개 셀에 " + s + "–" + e + " (" + fmtH(hours) + ") 일괄 반영"
+              : modalKeyLabel() + ": " + fmtH(hours) + " 반영");
 });
 function modalKeyLabel(){ return modalKey; }
 document.getElementById("mClear").addEventListener("click", ()=>{
-  const day = monthData().days[modalKey];
+  const data = monthData();
+  const day = data.days[modalKey];
+  let batch = 0;
+  if(selKeys.size > 1 && selKeys.has(modalKey)){
+    selKeys.forEach(k=>{
+      if(k === modalKey) return;
+      const d = data.days[k];
+      if(!d) return;
+      delete d.start; delete d.end; delete d.break;
+      batch++;
+    });
+  }
   if(day){ delete day.start; delete day.end; delete day.break; saveStore(); render(); }
   closeModal();
+  if(batch) toast("선택 " + (batch+1) + "개 셀의 시간 삭제");
 });
 document.getElementById("mClose").addEventListener("click", closeModal);
 overlay.addEventListener("click", e=>{ if(e.target === overlay) closeModal(); });
@@ -593,6 +693,11 @@ document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeModal(); }
 /* ================= 클릭 위임 ================= */
 grid.addEventListener("click", e=>{
   if(lpJustFired()) return;   // 롱프레스(연차) 직후 클릭 연쇄 무시
+  if(suppressClick){ suppressClick = false; return; }   // 드래그 선택 종료 클릭 무시
+  const cell = e.target.closest(".cell:not(.blank)");
+  if(!cell) return;
+  const key = cell.dataset.key;
+  if(e.shiftKey){ toggleSel(key); return; }   // Shift+클릭 = 멀티 선택 토글
   const tr = e.target.closest(".timerange");
   if(!tr) return;
   const day = monthData().days[tr.dataset.key] || {};
@@ -611,27 +716,49 @@ grid.addEventListener("dblclick", e=>{
 });
 grid.addEventListener("contextmenu", e=>{ if(e.target.closest(".cell:not(.blank)")) e.preventDefault(); });
 
-/* 롱프레스: 셀을 1초 이상 꾹 누르면 연차 지정/해제 (입력된 시간은 유지) */
+/* 롱프레스(1초) → 연차 / 드래그 → 멀티 선택 */
 let lpTimer = null, lpFiredAt = 0;
 function lpJustFired(){ return Date.now() - lpFiredAt < 1500; }   // 롱프레스 직후 클릭/더블클릭 연쇄 무시
+let dragStartKey = null, dragging = false, dragMoved = false, lastDragKey = null, suppressClick = false;
 grid.addEventListener("pointerdown", e=>{
   if(e.button !== 0) return;
-  if(e.target.closest("input")) return;   // 입력 필드 위 누름은 롱프레스 대상 아님
+  if(e.target.closest("input")) return;   // 입력 필드 위 누름은 롱프레스/드래그 대상 아님
   const cell = e.target.closest(".cell:not(.blank)");
   if(!cell) return;
   const key = cell.dataset.key;
+  dragStartKey = key; lastDragKey = key; dragging = true; dragMoved = false;
   clearTimeout(lpTimer);
-  lpTimer = setTimeout(()=>{ lpFiredAt = Date.now(); toggleVacation(key); }, 1000);
+  lpTimer = setTimeout(()=>{ lpFiredAt = Date.now(); dragging = false; toggleVacation(key); }, 1000);
 });
-function lpCancel(){ clearTimeout(lpTimer); lpTimer = null; }
+grid.addEventListener("pointermove", e=>{
+  if(!dragging || !(e.buttons & 1)) return;
+  const cell = e.target.closest(".cell:not(.blank)");
+  if(!cell) return;
+  const key = cell.dataset.key;
+  if(key === lastDragKey) return;
+  dragMoved = true;
+  clearTimeout(lpTimer); lpTimer = null;   // 드래그 시작 시 롱프레스 취소
+  selectRangeTo(key);
+  lastDragKey = key;
+});
+function lpCancel(){
+  clearTimeout(lpTimer); lpTimer = null;
+  if(dragging){ dragging = false; if(dragMoved) suppressClick = true; }   // 드래그 종료 클릭 무시
+}
 grid.addEventListener("pointerup", lpCancel);
 grid.addEventListener("pointercancel", lpCancel);
-grid.addEventListener("pointerleave", lpCancel);
+grid.addEventListener("pointerleave", ()=>{ clearTimeout(lpTimer); lpTimer = null; });
 
 function toggleVacation(key){
   const data = monthData();
   const day = data.days[key] || (data.days[key] = {});
-  day.vacation = !day.vacation;   // 시간은 유지, 합계에도 포함
+  if(day.vacation){
+    day.vacation = false;   // 연차 해제
+  }else{
+    day.vacation = true;
+    day.holiday = false;    // 휴일과 연차 중복 불가: 휴일 → 롱프레스 시 연차로 전환
+    // 시간은 유지, 합계에도 포함
+  }
   saveStore();
   render();
   toast(key + (day.vacation ? " 연차 지정 (입력 시간 유지)" : " 연차 해제"));
@@ -642,6 +769,7 @@ function toggleHoliday(key){
   const day = data.days[key] || (data.days[key] = {});
   day.holiday = !day.holiday;
   if(day.holiday){
+    day.vacation = false;   // 휴일과 연차 중복 불가: 연차 → 더블클릭 시 휴일로 전환
     // 휴일 지정 시 입력된 시간 제거 (합계에서 제외)
     delete day.hours; delete day.start; delete day.end; delete day.break;
   }
@@ -1188,6 +1316,21 @@ updatePermState();
 setAlarmOpen(store.alarmOpen === true);   // 기본 접힘 (펼친 적 있는 경우에만 펼침 유지)
 loadSnapshots();   // 스냅샷 목록/바로가기 버튼 표시 (TOAST_SERVER 정의 후)
 
+/* ===== 하단 설명 텍스트 접기/펼치기 ===== */
+function setHintOpen(open){
+  const body = document.getElementById("hintBody");
+  const btn = document.getElementById("hintToggle");
+  body.classList.toggle("collapsed", !open);
+  btn.textContent = (open ? "▼" : "▶") + " 설명";
+  store.hintOpen = open;
+  saveStore();
+}
+document.getElementById("hintToggle").addEventListener("click", ()=>{
+  setHintOpen(document.getElementById("hintBody").classList.contains("collapsed"));
+});
+setHintOpen(store.hintOpen !== false);   // 기본 펼침 (접은 적 있으면 접힘 유지)
+document.getElementById("selClear").addEventListener("click", clearSel);
+
 /* ===== 서버 저장소(backup_auto.txt)와 동기화 =====
    브라우저/주소가 달라도 localStorage는 각자 따로이므로,
    앱 폴더의 backup_auto.txt를 공유 저장소로 삼아 최신 데이터로 통일한다.
@@ -1221,7 +1364,7 @@ async function syncFromServer(){
             render(); renderAlarms();
             stampSaved();
             stampSync(true);
-            toast("서버 저장소(backup_auto.txt)의 최신 데이터로 동기화했습니다.");
+            // (토스트 없음 — 60초마다 조용히 동기화, 하단 `서버 동기화` 표시로만 안내)
           }else{
             stampSync(false);
           }
