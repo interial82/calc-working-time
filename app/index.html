@@ -50,6 +50,8 @@
   .cell{border:1px solid var(--border);border-radius:8px;background:var(--card);padding:6px 6px 5px;position:relative;
         user-select:none;-webkit-user-select:none;touch-action:manipulation}
   .cell.blank{background:transparent;border:none}
+  .cell.today{background:#dbeafe;border-color:#3b82f6}
+  .cell.today .daynum .num{color:#1d4ed8}
   .cell.holiday{background:#fecaca;border-color:var(--red)}
   .cell.holiday .daynum .num{color:var(--red)}
   .daynum{font-weight:700;font-size:13px;margin-bottom:4px}
@@ -62,6 +64,13 @@
   .timerange.empty{color:var(--muted)}
   .cell.holiday .timerange{color:#b91c1c;cursor:default;border-top-color:#fca5a5}
   .holidayBadge{position:absolute;top:5px;right:5px;background:var(--red);color:#fff;font-size:10px;padding:2px 6px;border-radius:999px}
+  .cell.vacation{background:#bbf7d0;border-color:#16a34a}
+  .cell.vacation .daynum .num{color:#15803d}
+  .cell.vacation.holiday{background:#fecaca;border-color:var(--red)}
+  .cell.vacation.holiday .daynum .num{color:var(--red)}
+  .vacationBadge{position:absolute;top:5px;right:5px;background:var(--green);color:#fff;font-size:10px;padding:2px 6px;border-radius:999px}
+  /* 휴일+연차 동시 지정 시 배지 나란히 (연차 오른쪽, 휴일 왼쪽) */
+  .cell.holiday.vacation .holidayBadge{right:34px}
   .hint{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7}
   .footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
   #savedStamp,#monthCount,#syncStamp{font-size:12px;color:var(--muted)}
@@ -183,7 +192,9 @@
       * 시간은 24시 기준으로 키보드로 직접 입력합니다 (예: 09:00, 18:30). "930"처럼 콜론 없이 입력해도 인식됩니다.<br>
       * 시작/종료 계산 시 휴게 시간이 자동 제안됩니다 (4시간 미만 0분, 4시간 이상 9시간 미만 30분, 9시간 이상 60분). 팝업에서 직접 수정할 수 있습니다.<br>
       * 시작/종료 시간을 입력한 날은 **시간 삭제(초기화)까지 시/분 직접 입력이 비활성화**됩니다 (중복 입력 방지).<br>
-      * 평일 셀을 더블클릭하면 휴일로 지정/해제됩니다. 휴일은 빨간 배경으로 표시되고, 입력된 시간은 제거되며, 합계에서 제외됩니다.<br>
+      * 평일 셀 **어디든 더블클릭**하면 휴일로 지정/해제됩니다. 휴일은 빨간 배경으로 표시되고, 입력된 시간은 제거되며, 합계에서 제외됩니다.<br>
+      * 셀을 **1초 이상 꾹 누르면(롱프레스)** 연차로 지정/해제됩니다. 연차는 연한 초록 배경 + `연차` 배지로 표시되고, **입력된 시간은 유지**되며 합계에도 그대로 포함됩니다.<br>
+      * 오늘 날짜의 셀은 연한 파란색으로 표시됩니다 (휴일/연차 지정 시 각각의 색이 우선).<br>
       * 의무근무시간은 자동 계산: min(워킹데이×8, 역일÷7×40) 소수점 버림, 워킹데이는 휴일 지정 시 재계산. 입력칸을 비우면 자동값 사용, 직접 입력하면 그 값 우선.<br>
       * 모든 입력은 이 브라우저에 자동 저장됩니다.
     </div>
@@ -393,6 +404,7 @@ function render(){
   const [y,m] = ym.split("-").map(Number);
   const first = new Date(y, m-1, 1);
   const dim = new Date(y, m, 0).getDate();
+  const todayKey = ymOf(new Date()) + "-" + String(new Date().getDate()).padStart(2,"0");   // 오늘 셀 키
   const g = document.getElementById("calGrid");
   g.innerHTML = "";
   const lead = first.getDay() === 0 ? 0 : first.getDay() - 1;   // 월~금 5열 기준 선행 빈칸
@@ -407,7 +419,8 @@ function render(){
     const key = dayKey(d);
     const day = data.days[key] || {};
     const cell = document.createElement("div");
-    cell.className = "cell" + (day.holiday ? " holiday" : "");
+    cell.className = "cell" + (day.holiday ? " holiday" : "") + (day.vacation ? " vacation" : "") +
+                     (key === todayKey ? " today" : "");   // 오늘 셀 연한 파란색 (휴일/연차 색은 우선)
     cell.dataset.key = key;
     const h = (day.hours != null && !isNaN(parseFloat(day.hours))) ? parseFloat(day.hours) : null;
     const hh = h != null ? Math.floor(h + 1e-9) : "";
@@ -424,6 +437,7 @@ function render(){
     }else{
       html += `<div class="timerange${has ? "" : " empty"}" data-key="${key}">${has ? day.start + "–" + day.end : "⏱ 시간 입력"}</div>`;
     }
+    if(day.vacation) html += `<span class="vacationBadge">연차</span>`;
     cell.innerHTML = html;
     g.appendChild(cell);
   }
@@ -459,6 +473,11 @@ function updateSummary(){
 
 /* ================= 일별 직접 입력 (시/분 분리) ================= */
 const grid = document.getElementById("calGrid");
+/* 포커스 시 기존 값 전체 선택 → 새 입력이 기존 숫자를 덮어씀 (지우고 시작할 필요 없음) */
+grid.addEventListener("focusin", e=>{
+  const t = e.target;
+  if(t.classList && (t.classList.contains("hoursInput") || t.classList.contains("minInput"))) t.select();
+});
 grid.addEventListener("input", e=>{
   const t = e.target;
   if(!t.classList.contains("hoursInput") && !t.classList.contains("minInput")) return;
@@ -573,6 +592,7 @@ document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeModal(); }
 
 /* ================= 클릭 위임 ================= */
 grid.addEventListener("click", e=>{
+  if(lpJustFired()) return;   // 롱프레스(연차) 직후 클릭 연쇄 무시
   const tr = e.target.closest(".timerange");
   if(!tr) return;
   const day = monthData().days[tr.dataset.key] || {};
@@ -580,8 +600,9 @@ grid.addEventListener("click", e=>{
   openModal(tr.dataset.key);
 });
 
-/* ================= 더블클릭 → 휴일 지정 ================= */
+/* ================= 더블클릭 → 휴일 지정 (셀 전체 범위) / 롱프레스(1초) → 연차 ================= */
 grid.addEventListener("dblclick", e=>{
+  if(lpJustFired()) return;   // 롱프레스(연차) 직후 더블클릭 연쇄 무시
   if(e.target.closest("input")) return;   // 입력 필드 더블클릭은 대상 아님
   const cell = e.target.closest(".cell:not(.blank)");
   if(!cell) return;
@@ -589,6 +610,32 @@ grid.addEventListener("dblclick", e=>{
   toggleHoliday(cell.dataset.key);
 });
 grid.addEventListener("contextmenu", e=>{ if(e.target.closest(".cell:not(.blank)")) e.preventDefault(); });
+
+/* 롱프레스: 셀을 1초 이상 꾹 누르면 연차 지정/해제 (입력된 시간은 유지) */
+let lpTimer = null, lpFiredAt = 0;
+function lpJustFired(){ return Date.now() - lpFiredAt < 1500; }   // 롱프레스 직후 클릭/더블클릭 연쇄 무시
+grid.addEventListener("pointerdown", e=>{
+  if(e.button !== 0) return;
+  if(e.target.closest("input")) return;   // 입력 필드 위 누름은 롱프레스 대상 아님
+  const cell = e.target.closest(".cell:not(.blank)");
+  if(!cell) return;
+  const key = cell.dataset.key;
+  clearTimeout(lpTimer);
+  lpTimer = setTimeout(()=>{ lpFiredAt = Date.now(); toggleVacation(key); }, 1000);
+});
+function lpCancel(){ clearTimeout(lpTimer); lpTimer = null; }
+grid.addEventListener("pointerup", lpCancel);
+grid.addEventListener("pointercancel", lpCancel);
+grid.addEventListener("pointerleave", lpCancel);
+
+function toggleVacation(key){
+  const data = monthData();
+  const day = data.days[key] || (data.days[key] = {});
+  day.vacation = !day.vacation;   // 시간은 유지, 합계에도 포함
+  saveStore();
+  render();
+  toast(key + (day.vacation ? " 연차 지정 (입력 시간 유지)" : " 연차 해제"));
+}
 
 function toggleHoliday(key){
   const data = monthData();
@@ -1146,6 +1193,7 @@ loadSnapshots();   // 스냅샷 목록/바로가기 버튼 표시 (TOAST_SERVER 
    앱 폴더의 backup_auto.txt를 공유 저장소로 삼아 최신 데이터로 통일한다.
    - 시작 시 + 5분마다 서버의 /backup을 읽어와 저장 시각이 더 최신이면 채택
    - 서버가 꺼져 있으면 현재 localStorage 그대로 사용 */
+let rejectedRemoteAt = 0;   // 사용자가 교체를 거부한 서버 저장 시각 (같은 버전은 재확인 안 함)
 async function syncFromServer(){
   // file:// 페이지는 fetch가 차단되므로 script 태그(JSONP)로 backup_auto.txt를 읽는다
   try{
@@ -1159,7 +1207,14 @@ async function syncFromServer(){
         if(data && data.store && data.store.months){
           const remoteAt = Date.parse(data.exportedAt) || 0;
           const localAt  = Date.parse(store.savedAt)  || 0;
-          if(remoteAt > localAt){
+          if(remoteAt > localAt && remoteAt !== rejectedRemoteAt){
+            // 동시 편집 보호: 다른 창/브라우저가 열려 있는데 서버가 더 최신이면
+            // 이 창에서 미저장 반영 상태로 덮어써지는 것이므로 확인 후 채택
+            if(peerList.length > 0 && localAt > 0){
+              const ok = confirm("서버 저장소의 데이터가 이 브라우저보다 최신입니다.\n" +
+                "다른 브라우저/탭(" + peerList.length + "개)이 열려 있어 최신 데이터로 교체하면 이 창에 최근 입력한 내용이 반영되지 않을 수 있습니다.\n\n계속 교체할까요?");
+              if(!ok){ rejectedRemoteAt = remoteAt; stampSync(false); resolve(); return; }
+            }
             store = data.store;
             migrateAlarms(store);
             localStorage.setItem(LS_KEY, JSON.stringify(store));

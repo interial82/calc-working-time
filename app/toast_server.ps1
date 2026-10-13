@@ -157,10 +157,10 @@ while ($listener.IsListening) {
       $ar = $listener.BeginGetContext($null, $null)
       continue
     }
-    $lastPing = Get-Date
     $path = $ctx.Request.Url.AbsolutePath
     $method = $ctx.Request.HttpMethod
     $code = 200
+    # $lastPing은 탭 heartbeat(/ping·/peers.js) 분기에서만 갱신 — 다른 요청은 무활동 종료 리셋에 영향 없음
     if ($method -eq "POST" -and $path -eq "/backup") {
       # 자동 백업 미러: 요청 본문을 backup_auto.txt에 원자적 저장
       try {
@@ -244,6 +244,7 @@ while ($listener.IsListening) {
       $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
     } elseif ($path -eq "/peers.js") {
       # 클라이언트 등록 + 다른 클라이언트 목록 반환 (타 브라우저/탭 열림 감지)
+      $lastPing = Get-Date   # 탭 heartbeat: 무활동 종료 타이머 리셋
       $q = Parse-Query $ctx.Request.Url.Query
       $id = if ($q.ContainsKey("id")) { $q["id"] } else { "" }
       $u  = if ($q.ContainsKey("u"))  { $q["u"]  } else { "" }
@@ -326,6 +327,7 @@ while ($listener.IsListening) {
       Log ("toast ok=" + $ok + " " + $title)
     } elseif ($path -eq "/ping") {
       # ping 도달 기록 (1분 간격 스로틀) — 브라우저 연결 확인용
+      $lastPing = Get-Date   # 탭 heartbeat: 무활동 종료 타이머 리셋
       if (-not $script:lastPingLog -or ((Get-Date) - $script:lastPingLog).TotalSeconds -gt 60) {
         $script:lastPingLog = Get-Date
         Log "ping from browser"
